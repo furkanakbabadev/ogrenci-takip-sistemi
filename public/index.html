@@ -8,10 +8,18 @@
   </head>
   <body>
     <main class="shell">
-      <section class="panel auth-panel" id="authPanel">
+      <header class="brandbar">
+        <div class="brandmark">OT</div>
         <div>
+          <strong>Ogrenci Takip Sistemi</strong>
+          <span>Konum kontrollu giris cikis paneli</span>
+        </div>
+      </header>
+
+      <section class="panel auth-panel" id="authPanel">
+        <div class="auth-head">
           <p class="eyebrow">Okul giris cikis takip</p>
-          <h1>Ogrenci Takip</h1>
+          <h1>Bugunku calismayi guvenle kaydet.</h1>
           <p class="muted" id="configText">Konum ve Sheets ayarlari kontrol ediliyor.</p>
         </div>
 
@@ -23,11 +31,11 @@
         <form class="form" id="studentLogin">
           <label>
             Ogrenci kodu
-            <input name="code" autocomplete="username" required>
+            <input name="code" autocomplete="username" placeholder="ORG001" required>
           </label>
           <label>
             Sifre
-            <input name="password" type="password" autocomplete="current-password" required>
+            <input name="password" type="password" autocomplete="current-password" placeholder="Sifreniz" required>
           </label>
           <button type="submit">Giris yap</button>
         </form>
@@ -35,7 +43,7 @@
         <form class="form hidden" id="adminLogin">
           <label>
             Admin sifresi
-            <input name="password" type="password" autocomplete="current-password" required>
+            <input name="password" type="password" autocomplete="current-password" placeholder="Admin sifresi" required>
           </label>
           <button type="submit">Admin paneline gir</button>
         </form>
@@ -54,16 +62,23 @@
           <div class="status-box">
             <span>Durum</span>
             <strong id="entryStatus">-</strong>
+            <small>Aktif giris kaydi</small>
           </div>
           <div class="status-box">
             <span>Mesafe</span>
             <strong id="distanceStatus">Konum bekleniyor</strong>
+            <small>Okul merkezine uzaklik</small>
           </div>
         </div>
 
         <div class="actions">
           <button id="checkIn">Giris yap</button>
           <button id="checkOut" class="danger">Cikis yap</button>
+        </div>
+
+        <div class="section-head">
+          <h3>Son hareketler</h3>
+          <p>Giris cikis kayitlari Google Sheets ile eslesir.</p>
         </div>
 
         <div class="table-wrap">
@@ -90,6 +105,11 @@
           <button class="secondary" id="adminLogout">Cikis</button>
         </header>
 
+        <div class="section-head">
+          <h3>Yeni ogrenci</h3>
+          <p>Ilk giriste ogrenci hesabi kullandigi cihaza baglanir.</p>
+        </div>
+
         <form class="form inline" id="addStudent">
           <label>
             Kod
@@ -105,6 +125,11 @@
           </label>
           <button type="submit">Ogrenci ekle</button>
         </form>
+
+        <div class="section-head">
+          <h3>Son kayitlar</h3>
+          <p>Tum ogrencilerin giris cikis hareketleri.</p>
+        </div>
 
         <div class="table-wrap">
           <table>

@@ -86,7 +86,7 @@ async function loadStudent() {
     adminPanel.classList.add("hidden");
     studentPanel.classList.remove("hidden");
     $("#studentName").textContent = `${data.name} (${data.code})`;
-    $("#entryStatus").textContent = data.openEntry ? "Iceride" : "Disarida";
+    setStatus("#entryStatus", data.openEntry ? "Iceride" : "Disarida", data.openEntry ? "ok" : "warning");
     renderStudentRows(data.rows);
   } catch (error) {
     logoutStudent(false);
@@ -138,10 +138,10 @@ function watchPosition() {
     };
     if (state.school) {
       const distance = distanceMeters(state.currentPosition.lat, state.currentPosition.lng, state.school.lat, state.school.lng);
-      $("#distanceStatus").textContent = `${Math.round(distance)} m`;
+      setStatus("#distanceStatus", `${Math.round(distance)} m`, distance <= state.school.radiusMeters ? "ok" : "danger");
     }
   }, () => {
-    $("#distanceStatus").textContent = "Konum izni yok";
+    setStatus("#distanceStatus", "Konum izni yok", "danger");
   }, {
     enableHighAccuracy: true,
     maximumAge: 10000,
@@ -153,11 +153,11 @@ function renderStudentRows(rows) {
   $("#studentRows").innerHTML = rows.map((row) => `
     <tr>
       <td>${formatDate(row.timestamp)}</td>
-      <td>${row.type === "in" ? "Giris" : "Cikis"}</td>
+      <td>${typeBadge(row.type)}</td>
       <td>${row.distanceMeters || "-"} m</td>
       <td>${row.hours || "-"}</td>
     </tr>
-  `).join("") || `<tr><td colspan="4">Kayit yok</td></tr>`;
+  `).join("") || `<tr class="empty-row"><td colspan="4">Henuz kayit yok</td></tr>`;
 }
 
 function renderAdminRows(rows) {
@@ -165,11 +165,11 @@ function renderAdminRows(rows) {
     <tr>
       <td>${formatDate(row.timestamp)}</td>
       <td>${row.name || row.code}</td>
-      <td>${row.type === "in" ? "Giris" : "Cikis"}</td>
+      <td>${typeBadge(row.type)}</td>
       <td>${row.distanceMeters || "-"} m</td>
       <td>${row.hours || "-"}</td>
     </tr>
-  `).join("") || `<tr><td colspan="5">Kayit yok</td></tr>`;
+  `).join("") || `<tr class="empty-row"><td colspan="5">Henuz kayit yok</td></tr>`;
 }
 
 async function api(url, options = {}) {
@@ -217,6 +217,18 @@ function showToast(message) {
   toast.classList.add("show");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => toast.classList.remove("show"), 3200);
+}
+
+function setStatus(selector, text, tone) {
+  const element = $(selector);
+  element.textContent = text;
+  element.classList.remove("ok", "danger", "warning");
+  if (tone) element.classList.add(tone);
+}
+
+function typeBadge(type) {
+  const isIn = type === "in";
+  return `<span class="badge ${isIn ? "in" : "out"}">${isIn ? "Giris" : "Cikis"}</span>`;
 }
 
 function formatDate(value) {
