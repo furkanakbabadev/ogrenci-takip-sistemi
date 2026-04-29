@@ -14,6 +14,7 @@ const SCHOOL = {
   lng: Number(process.env.SCHOOL_LNG || 0),
   radiusMeters: Number(process.env.ALLOWED_RADIUS_METERS || 1000)
 };
+const MAX_ACCURACY_METERS = Number(process.env.MAX_ACCURACY_METERS || 300);
 const SESSION_SECRET = process.env.SESSION_SECRET || "dev-secret-change-me";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 
@@ -147,8 +148,8 @@ async function handleApi(req, res, url) {
       sendJson(res, 403, { error: `Okula ${Math.round(distance)} metre uzaktasiniz. Giris/cikis icin en fazla ${SCHOOL.radiusMeters} metre olabilir.` });
       return;
     }
-    if (accuracy > 150) {
-      sendJson(res, 400, { error: "Konum hassasiyeti dusuk. GPS acik alanda tekrar deneyin." });
+    if (accuracy > MAX_ACCURACY_METERS) {
+      sendJson(res, 400, { error: `Konum hassasiyeti dusuk. Telefonunuz ${Math.round(accuracy)} metre hassasiyet bildiriyor; en fazla ${MAX_ACCURACY_METERS} metre olmali. Konum iznini acip tekrar deneyin.` });
       return;
     }
     const openEntry = await getOpenEntry(session.code);

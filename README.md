@@ -50,6 +50,11 @@ Uygulama su sheetleri otomatik olusturur:
 - `Events`: tum giris/cikis hareketleri
 - `Student_<ogrenci_kodu>`: ilgili ogrencinin hareketleri ve gunluk toplam sureleri
 
+## Konum Ayarlari
+
+- `ALLOWED_RADIUS_METERS`: Okul merkezinden izin verilen en uzak mesafe. 1 km icin `1000` yazin.
+- `MAX_ACCURACY_METERS`: Cihazin bildirdigi GPS hassasiyeti limiti. Kapali alanlarda hata azalmasi icin `300` iyi bir baslangictir.
+
 ## Onemli Guvenlik Notu
 
 Tarayici konumu ve localStorage tabanli cihaz kimligi ucretsiz web teknolojileriyle yuzde yuz guvenli degildir. Bu sistem pratikte sifre paylasimini ve uzaktan giris/cikisi zorlastirir. Daha yuksek guvenlik icin okul Wi-Fi dogrulamasi, QR/NFC noktalari, mobil uygulama tabanli cihaz dogrulama veya MDM gerekir.
