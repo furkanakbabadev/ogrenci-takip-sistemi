@@ -76,7 +76,7 @@ async function loadConfig() {
   const config = await api("/api/config");
   state.school = config.school;
   $("#configText").textContent = config.sheetsReady
-    ? `Okula ${config.school.radiusMeters} metre icinde giris/cikis yapilabilir.`
+    ? `Okula ${formatRadius(config.school.radiusMeters)} icinde giris/cikis yapilabilir.`
     : "Google Sheets ayarlari eksik. .env dosyasini doldurun.";
 }
 
@@ -115,7 +115,7 @@ async function sendEvent(type) {
   }
   if (isOutsideSchool()) {
     showBoundaryWarning(true);
-    showToast(`Okul sinirlari disindasiniz. Giris/cikis icin en fazla ${state.school.radiusMeters} metre uzakta olmalisiniz.`);
+    showToast(`Okul sinirlari disindasiniz. Giris/cikis icin en fazla ${formatRadius(state.school.radiusMeters)} uzakta olmalisiniz.`);
     return;
   }
   try {
@@ -235,12 +235,18 @@ function showToast(message) {
 function showBoundaryWarning(show, message) {
   const alert = $("#boundaryAlert");
   if (!alert) return;
-  alert.textContent = message || `Okul sinirlari disindasiniz. Giris ve cikis yapabilmek icin okul konumuna ${state.school?.radiusMeters || 1000} metre icinde olmalisiniz.`;
+  alert.textContent = message || `Okul sinirlari disindasiniz. Giris ve cikis yapabilmek icin okul konumuna ${formatRadius(state.school?.radiusMeters || 1000)} icinde olmalisiniz.`;
   alert.classList.toggle("hidden", !show);
 }
 
 function isOutsideSchool() {
   return state.school && Number.isFinite(state.currentDistance) && state.currentDistance > state.school.radiusMeters;
+}
+
+function formatRadius(meters) {
+  const value = Number(meters);
+  if (value >= 1000 && value % 1000 === 0) return `${value / 1000} km`;
+  return `${value} metre`;
 }
 
 function setStatus(selector, text, tone) {
