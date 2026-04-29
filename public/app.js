@@ -3,7 +3,8 @@ const state = {
   studentToken: localStorage.getItem("studentToken") || "",
   adminToken: localStorage.getItem("adminToken") || "",
   deviceId: getDeviceId(),
-  currentPosition: null
+  currentPosition: null,
+  currentDistance: null
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -112,17 +113,26 @@ async function sendEvent(type) {
     showToast("Konum alinamadi. Tarayicida konum izni verin.");
     return;
   }
-  const result = await api("/api/student/event", {
-    method: "POST",
-    token: state.studentToken,
-    body: {
-      type,
-      deviceId: state.deviceId,
-      position: state.currentPosition
-    }
-  });
-  showToast(type === "in" ? "Giris kaydedildi." : `Cikis kaydedildi. Sure: ${result.hours} saat.`);
-  await loadStudent();
+  if (isOutsideSchool()) {
+    showBoundaryWarning(true);
+    showToast(`Okul sinirlari disindasiniz. Giris/cikis icin en fazla ${state.school.radiusMeters} metre uzakta olmalisiniz.`);
+    return;
+  }
+  try {
+    const result = await api("/api/student/event", {
+      method: "POST",
+      token: state.studentToken,
+      body: {
+        type,
+        deviceId: state.deviceId,
+        position: state.currentPosition
+      }
+    });
+    showToast(type === "in" ? "Giris kaydedildi." : `Cikis kaydedildi. Sure: ${result.hours} saat.`);
+    await loadStudent();
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 function watchPosition() {
@@ -138,10 +148,13 @@ function watchPosition() {
     };
     if (state.school) {
       const distance = distanceMeters(state.currentPosition.lat, state.currentPosition.lng, state.school.lat, state.school.lng);
+      state.currentDistance = distance;
       setStatus("#distanceStatus", `${Math.round(distance)} m`, distance <= state.school.radiusMeters ? "ok" : "danger");
+      showBoundaryWarning(distance > state.school.radiusMeters);
     }
   }, () => {
     setStatus("#distanceStatus", "Konum izni yok", "danger");
+    showBoundaryWarning(true, "Konum izni verilmedi. Giris ve cikis yapabilmek icin konum izni acik olmalidir.");
   }, {
     enableHighAccuracy: true,
     maximumAge: 10000,
@@ -217,6 +230,17 @@ function showToast(message) {
   toast.classList.add("show");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => toast.classList.remove("show"), 3200);
+}
+
+function showBoundaryWarning(show, message) {
+  const alert = $("#boundaryAlert");
+  if (!alert) return;
+  alert.textContent = message || `Okul sinirlari disindasiniz. Giris ve cikis yapabilmek icin okul konumuna ${state.school?.radiusMeters || 1000} metre icinde olmalisiniz.`;
+  alert.classList.toggle("hidden", !show);
+}
+
+function isOutsideSchool() {
+  return state.school && Number.isFinite(state.currentDistance) && state.currentDistance > state.school.radiusMeters;
 }
 
 function setStatus(selector, text, tone) {
