@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: ogrenci-takip-sistemi
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/config
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_RADIUS_METERS
+        value: 1000

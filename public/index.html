@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ogrenci Takip</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel auth-panel" id="authPanel">
+        <div>
+          <p class="eyebrow">Okul giris cikis takip</p>
+          <h1>Ogrenci Takip</h1>
+          <p class="muted" id="configText">Konum ve Sheets ayarlari kontrol ediliyor.</p>
+        </div>
+
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="student">Ogrenci</button>
+          <button class="tab" data-tab="admin">Admin</button>
+        </div>
+
+        <form class="form" id="studentLogin">
+          <label>
+            Ogrenci kodu
+            <input name="code" autocomplete="username" required>
+          </label>
+          <label>
+            Sifre
+            <input name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <button type="submit">Giris yap</button>
+        </form>
+
+        <form class="form hidden" id="adminLogin">
+          <label>
+            Admin sifresi
+            <input name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <button type="submit">Admin paneline gir</button>
+        </form>
+      </section>
+
+      <section class="panel hidden" id="studentPanel">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Ogrenci</p>
+            <h2 id="studentName">-</h2>
+          </div>
+          <button class="secondary" id="studentLogout">Cikis</button>
+        </header>
+
+        <div class="status-grid">
+          <div class="status-box">
+            <span>Durum</span>
+            <strong id="entryStatus">-</strong>
+          </div>
+          <div class="status-box">
+            <span>Mesafe</span>
+            <strong id="distanceStatus">Konum bekleniyor</strong>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="checkIn">Giris yap</button>
+          <button id="checkOut" class="danger">Cikis yap</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Tarih</th>
+                <th>Islem</th>
+                <th>Mesafe</th>
+                <th>Saat</th>
+              </tr>
+            </thead>
+            <tbody id="studentRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="adminPanel">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Yonetim</p>
+            <h2>Admin Paneli</h2>
+          </div>
+          <button class="secondary" id="adminLogout">Cikis</button>
+        </header>
+
+        <form class="form inline" id="addStudent">
+          <label>
+            Kod
+            <input name="code" placeholder="ORG001" required>
+          </label>
+          <label>
+            Ad soyad
+            <input name="name" required>
+          </label>
+          <label>
+            Sifre
+            <input name="password" type="password" required>
+          </label>
+          <button type="submit">Ogrenci ekle</button>
+        </form>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Tarih</th>
+                <th>Ogrenci</th>
+                <th>Islem</th>
+                <th>Mesafe</th>
+                <th>Saat</th>
+              </tr>
+            </thead>
+            <tbody id="adminRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>
