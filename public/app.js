@@ -4,7 +4,10 @@ const state = {
   adminToken: localStorage.getItem("adminToken") || "",
   deviceId: getDeviceId(),
   currentPosition: null,
-  currentDistance: null
+  currentDistance: null,
+  openEntry: null,
+  autoCheckoutTimer: null,
+  autoCheckoutInProgress: false
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -22,6 +25,12 @@ async function init() {
   watchPosition();
   if (state.studentToken) await loadStudent();
   if (state.adminToken) await loadAdmin();
+  setInterval(refreshActivePanel, 60000);
+}
+
+async function refreshActivePanel() {
+  if (state.studentToken && !studentPanel.classList.contains("hidden")) await loadStudent();
+  if (state.adminToken && !adminPanel.classList.contains("hidden")) await loadAdmin();
 }
 
 function bindUi() {
@@ -67,6 +76,7 @@ function bindUi() {
   });
 
   $("#checkIn").addEventListener("click", () => sendEvent("in"));
+  $("#confirmCheckin").addEventListener("click", () => sendEvent("checkin"));
   $("#checkOut").addEventListener("click", () => sendEvent("out"));
   $("#studentLogout").addEventListener("click", logoutStudent);
   $("#adminLogout").addEventListener("click", logoutAdmin);
@@ -87,7 +97,10 @@ async function loadStudent() {
     adminPanel.classList.add("hidden");
     studentPanel.classList.remove("hidden");
     $("#studentName").textContent = `${data.name} (${data.code})`;
+    state.openEntry = data.openEntry || null;
     setStatus("#entryStatus", data.openEntry ? "Iceride" : "Disarida", data.openEntry ? "ok" : "warning");
+    updateCheckinStatus(data.checkin);
+    updateActionState();
     renderStudentRows(data.rows);
   } catch (error) {
     logoutStudent(false);
@@ -128,7 +141,12 @@ async function sendEvent(type) {
         position: state.currentPosition
       }
     });
-    showToast(type === "in" ? "Giris kaydedildi." : `Cikis kaydedildi. Sure: ${result.hours} saat.`);
+    const messages = {
+      in: "Giris kaydedildi.",
+      checkin: "Yoklama kaydedildi.",
+      out: `Cikis kaydedildi. Sure: ${result.hours} saat.`
+    };
+    showToast(messages[type] || "Kayit tamamlandi.");
     await loadStudent();
   } catch (error) {
     showToast(error.message);
@@ -151,6 +169,7 @@ function watchPosition() {
       state.currentDistance = distance;
       setStatus("#distanceStatus", `${Math.round(distance)} m`, distance <= state.school.radiusMeters ? "ok" : "danger");
       showBoundaryWarning(distance > state.school.radiusMeters);
+      handleAutoCheckout(distance);
     }
   }, () => {
     setStatus("#distanceStatus", "Konum izni yok", "danger");
@@ -171,6 +190,26 @@ function renderStudentRows(rows) {
       <td>${row.hours || "-"}</td>
     </tr>
   `).join("") || `<tr class="empty-row"><td colspan="4">Henuz kayit yok</td></tr>`;
+}
+
+function updateCheckinStatus(checkin) {
+  if (!state.openEntry || !checkin) {
+    setStatus("#checkinStatus", "-", "warning");
+    $("#checkinHint").textContent = "Giris yaptiktan sonra baslar";
+    return;
+  }
+  const nextDue = new Date(checkin.nextDueAt);
+  const minutesLeft = Math.ceil((nextDue.getTime() - Date.now()) / 60000);
+  setStatus("#checkinStatus", checkin.overdue ? "Gecikti" : `${Math.max(minutesLeft, 0)} dk`, checkin.overdue ? "danger" : "ok");
+  $("#checkinHint").textContent = checkin.overdue
+    ? "Yoklama suresi asildi, kayit Sheets'e duser"
+    : `Sonraki yoklama: ${formatTime(nextDue)}`;
+}
+
+function updateActionState() {
+  $("#confirmCheckin").disabled = !state.openEntry;
+  $("#checkIn").disabled = Boolean(state.openEntry);
+  $("#checkOut").disabled = !state.openEntry;
 }
 
 function renderAdminRows(rows) {
@@ -201,6 +240,8 @@ async function api(url, options = {}) {
 
 function logoutStudent(show = true) {
   state.studentToken = "";
+  state.openEntry = null;
+  cancelAutoCheckout();
   localStorage.removeItem("studentToken");
   studentPanel.classList.add("hidden");
   authPanel.classList.remove("hidden");
@@ -239,6 +280,46 @@ function showBoundaryWarning(show, message) {
   alert.classList.toggle("hidden", !show);
 }
 
+function handleAutoCheckout(distance) {
+  if (!state.studentToken || !state.openEntry || state.autoCheckoutInProgress) return;
+  if (distance <= state.school.radiusMeters) {
+    cancelAutoCheckout();
+    return;
+  }
+  if (state.autoCheckoutTimer) return;
+  showBoundaryWarning(true, `Okul sinirlari disindasiniz. 30 saniye icinde sinira donmezseniz otomatik cikis kaydi olusturulacak.`);
+  state.autoCheckoutTimer = setTimeout(autoCheckout, 30000);
+}
+
+async function autoCheckout() {
+  state.autoCheckoutTimer = null;
+  if (!state.studentToken || !state.openEntry || !isOutsideSchool() || !state.currentPosition) return;
+  state.autoCheckoutInProgress = true;
+  try {
+    const result = await api("/api/student/event", {
+      method: "POST",
+      token: state.studentToken,
+      body: {
+        type: "auto_out",
+        deviceId: state.deviceId,
+        position: state.currentPosition
+      }
+    });
+    showToast(`Okul siniri disina cikildigi icin otomatik cikis yapildi. Sure: ${result.hours} saat.`);
+    await loadStudent();
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    state.autoCheckoutInProgress = false;
+  }
+}
+
+function cancelAutoCheckout() {
+  if (!state.autoCheckoutTimer) return;
+  clearTimeout(state.autoCheckoutTimer);
+  state.autoCheckoutTimer = null;
+}
+
 function isOutsideSchool() {
   return state.school && Number.isFinite(state.currentDistance) && state.currentDistance > state.school.radiusMeters;
 }
@@ -257,8 +338,22 @@ function setStatus(selector, text, tone) {
 }
 
 function typeBadge(type) {
-  const isIn = type === "in";
-  return `<span class="badge ${isIn ? "in" : "out"}">${isIn ? "Giris" : "Cikis"}</span>`;
+  const labels = {
+    in: "Giris",
+    out: "Cikis",
+    auto_out: "Otomatik cikis",
+    checkin: "Yoklama",
+    missed_check: "Kacirilan yoklama"
+  };
+  const tones = {
+    in: "in",
+    checkin: "in",
+    missed_check: "missed",
+    out: "out",
+    auto_out: "out"
+  };
+  const label = labels[type] || type;
+  return `<span class="badge ${tones[type] || "out"}">${label}</span>`;
 }
 
 function formatDate(value) {
@@ -267,6 +362,13 @@ function formatDate(value) {
     dateStyle: "short",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function formatTime(value) {
+  return new Intl.DateTimeFormat("tr-TR", {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(value);
 }
 
 function distanceMeters(lat1, lng1, lat2, lng2) {

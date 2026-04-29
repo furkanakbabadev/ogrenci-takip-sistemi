@@ -15,6 +15,8 @@ const SCHOOL = {
   radiusMeters: Number(process.env.ALLOWED_RADIUS_METERS || 1000)
 };
 const MAX_ACCURACY_METERS = Number(process.env.MAX_ACCURACY_METERS || 300);
+const CHECKIN_INTERVAL_MINUTES = Number(process.env.CHECKIN_INTERVAL_MINUTES || 30);
+const CHECKIN_GRACE_MINUTES = Number(process.env.CHECKIN_GRACE_MINUTES || 5);
 const SESSION_SECRET = process.env.SESSION_SECRET || "dev-secret-change-me";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 
@@ -42,6 +44,10 @@ async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/config") {
     sendJson(res, 200, {
       school: SCHOOL,
+      checkin: {
+        intervalMinutes: CHECKIN_INTERVAL_MINUTES,
+        graceMinutes: CHECKIN_GRACE_MINUTES
+      },
       sheetsReady: Boolean(SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY)
     });
     return;
@@ -82,6 +88,7 @@ async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/admin/events") {
     requireAdmin(req);
     await ensureWorkbook();
+    await auditAllMissedCheckins();
     const events = await sheetsValues("Events!A:J");
     sendJson(res, 200, { events: rowsToObjects(events).slice(-100).reverse() });
     return;
@@ -117,11 +124,13 @@ async function handleApi(req, res, url) {
     const session = requireStudent(req);
     await ensureWorkbook();
     const student = await findStudent(session.code);
+    if (student) await auditMissedCheckins(student);
     const events = await sheetsValues(`Student_${session.code}!A:H`).catch(() => []);
     sendJson(res, 200, {
       code: session.code,
       name: student ? student.name : session.code,
       openEntry: await getOpenEntry(session.code),
+      checkin: await getCheckinStatus(session.code),
       rows: rowsToObjects(events).slice(-60).reverse()
     });
     return;
@@ -130,7 +139,8 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/student/event") {
     const session = requireStudent(req);
     const body = await readJson(req);
-    const type = body.type === "out" ? "out" : "in";
+    const requestedType = body.type === "checkin" ? "checkin" : body.type === "auto_out" ? "auto_out" : body.type === "out" ? "out" : "in";
+    const type = requestedType;
     const position = normalizePosition(body.position);
     const deviceId = cleanText(body.deviceId);
     const accuracy = Number(position.accuracy || 0);
@@ -144,7 +154,7 @@ async function handleApi(req, res, url) {
       return;
     }
     const distance = distanceMeters(position.lat, position.lng, SCHOOL.lat, SCHOOL.lng);
-    if (!Number.isFinite(distance) || distance > SCHOOL.radiusMeters) {
+    if (type !== "auto_out" && (!Number.isFinite(distance) || distance > SCHOOL.radiusMeters)) {
       sendJson(res, 403, { error: `Okula ${Math.round(distance)} metre uzaktasiniz. Giris/cikis icin en fazla ${SCHOOL.radiusMeters} metre olabilir.` });
       return;
     }
@@ -157,38 +167,27 @@ async function handleApi(req, res, url) {
       sendJson(res, 409, { error: "Zaten acik bir giris kaydiniz var." });
       return;
     }
-    if (type === "out" && !openEntry) {
+    if (type === "checkin" && !openEntry) {
+      sendJson(res, 409, { error: "Yoklama icin once giris yapmalisiniz." });
+      return;
+    }
+    if ((type === "out" || type === "auto_out") && !openEntry) {
       sendJson(res, 409, { error: "Cikis icin once giris yapmalisiniz." });
       return;
     }
 
     const now = new Date();
-    const hours = type === "out" ? roundHours((now - new Date(openEntry.timestamp)) / 36e5) : "";
-    const eventRow = [
-      now.toISOString(),
-      session.code,
-      student.name,
+    const hours = type === "out" || type === "auto_out" ? roundHours((now - new Date(openEntry.timestamp)) / 36e5) : "";
+    await appendStudentEvent(student, {
+      timestamp: now,
       type,
-      position.lat,
-      position.lng,
-      Math.round(distance),
-      Math.round(accuracy),
+      position,
+      distance,
+      accuracy,
       deviceId,
       hours
-    ];
-    await sheetsAppend("Events!A:J", [eventRow]);
-    await ensureStudentSheet(session.code, student.name);
-    await sheetsAppend(`Student_${session.code}!A:H`, [[
-      now.toISOString(),
-      type,
-      position.lat,
-      position.lng,
-      Math.round(distance),
-      Math.round(accuracy),
-      deviceId,
-      hours
-    ]]);
-    sendJson(res, 201, { ok: true, type, hours, distance: Math.round(distance) });
+    });
+    sendJson(res, 201, { ok: true, type, hours, distance: Math.round(distance), checkin: await getCheckinStatus(session.code) });
     return;
   }
 
@@ -268,8 +267,106 @@ async function updateStudentDevice(rowNumber, deviceId) {
 async function getOpenEntry(code) {
   const rows = await sheetsValues("Events!A:J");
   const events = rowsToObjects(rows).filter((event) => event.code === code);
-  const last = events.at(-1);
-  return last && last.type === "in" ? last : null;
+  return computeOpenEntry(events);
+}
+
+async function getEventsForCode(code) {
+  const rows = await sheetsValues("Events!A:J");
+  return rowsToObjects(rows).filter((event) => event.code === code);
+}
+
+function computeOpenEntry(events) {
+  let openEntry = null;
+  for (const event of events) {
+    if (event.type === "in") openEntry = event;
+    if (event.type === "out" || event.type === "auto_out") openEntry = null;
+  }
+  return openEntry;
+}
+
+async function auditMissedCheckins(student) {
+  const events = await getEventsForCode(student.code);
+  const openEntry = computeOpenEntry(events);
+  if (!openEntry) return;
+  const now = Date.now();
+  const intervalMs = CHECKIN_INTERVAL_MINUTES * 60 * 1000;
+  const graceMs = CHECKIN_GRACE_MINUTES * 60 * 1000;
+  let lastCheckTime = getLastCheckinTime(events, openEntry);
+  let missedCount = 0;
+
+  while (lastCheckTime + intervalMs + graceMs <= now && missedCount < 24) {
+    lastCheckTime += intervalMs;
+    await appendStudentEvent(student, {
+      timestamp: new Date(lastCheckTime),
+      type: "missed_check",
+      position: {},
+      distance: "",
+      accuracy: "",
+      deviceId: "",
+      hours: ""
+    });
+    missedCount += 1;
+  }
+}
+
+async function auditAllMissedCheckins() {
+  const students = await getStudents();
+  for (const student of students.filter((item) => item.status === "active")) {
+    await auditMissedCheckins(student);
+  }
+}
+
+async function getCheckinStatus(code) {
+  const events = await getEventsForCode(code);
+  const openEntry = computeOpenEntry(events);
+  if (!openEntry) return null;
+  const lastCheckTime = getLastCheckinTime(events, openEntry);
+  const nextDueAt = lastCheckTime + CHECKIN_INTERVAL_MINUTES * 60 * 1000;
+  return {
+    intervalMinutes: CHECKIN_INTERVAL_MINUTES,
+    graceMinutes: CHECKIN_GRACE_MINUTES,
+    lastAt: new Date(lastCheckTime).toISOString(),
+    nextDueAt: new Date(nextDueAt).toISOString(),
+    overdue: Date.now() > nextDueAt + CHECKIN_GRACE_MINUTES * 60 * 1000
+  };
+}
+
+function getLastCheckinTime(events, openEntry) {
+  const openTime = new Date(openEntry.timestamp).getTime();
+  const last = events
+    .filter((event) => new Date(event.timestamp).getTime() >= openTime)
+    .filter((event) => ["in", "checkin", "missed_check"].includes(event.type))
+    .at(-1);
+  return new Date(last?.timestamp || openEntry.timestamp).getTime();
+}
+
+async function appendStudentEvent(student, event) {
+  const timestamp = event.timestamp instanceof Date ? event.timestamp : new Date(event.timestamp);
+  const position = event.position || {};
+  const masterRow = [
+    timestamp.toISOString(),
+    student.code,
+    student.name,
+    event.type,
+    position.lat ?? "",
+    position.lng ?? "",
+    event.distance === "" ? "" : Math.round(event.distance),
+    event.accuracy === "" ? "" : Math.round(event.accuracy),
+    event.deviceId || "",
+    event.hours ?? ""
+  ];
+  await sheetsAppend("Events!A:J", [masterRow]);
+  await ensureStudentSheet(student.code, student.name);
+  await sheetsAppend(`Student_${student.code}!A:H`, [[
+    timestamp.toISOString(),
+    event.type,
+    position.lat ?? "",
+    position.lng ?? "",
+    event.distance === "" ? "" : Math.round(event.distance),
+    event.accuracy === "" ? "" : Math.round(event.accuracy),
+    event.deviceId || "",
+    event.hours ?? ""
+  ]]);
 }
 
 function rowsToObjects(rows) {

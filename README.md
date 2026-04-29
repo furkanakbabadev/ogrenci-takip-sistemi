@@ -54,6 +54,8 @@ Uygulama su sheetleri otomatik olusturur:
 
 - `ALLOWED_RADIUS_METERS`: Okul merkezinden izin verilen en uzak mesafe. 1 km icin `1000` yazin.
 - `MAX_ACCURACY_METERS`: Cihazin bildirdigi GPS hassasiyeti limiti. Kapali alanlarda hata azalmasi icin `300` iyi bir baslangictir.
+- `CHECKIN_INTERVAL_MINUTES`: Giris yapan ogrencinin kac dakikada bir yoklama vermesi gerektigi. Varsayilan `30`.
+- `CHECKIN_GRACE_MINUTES`: Yoklama gecikmesi icin ek tolerans suresi. Varsayilan `5`.
 
 ## Onemli Guvenlik Notu
 
